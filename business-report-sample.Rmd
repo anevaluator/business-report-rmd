@@ -1,0 +1,144 @@
+---
+title: "Sample Report"
+subtitle: "An Analysis of Survey Data"
+author: 
+  - Hung Vo
+date: "`r format(Sys.time(), '%d %B %Y')`"
+abstract: |
+  This is a summary of the report.
+mainfont: 'Arial Narrow'
+output: 
+  word_document:
+    fig_caption: true
+    reference_docx: './style/business-report-style.docx'
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# load packages
+library(tidyverse)
+library(readr)
+library(flextable)
+
+# read in City of Casey short survey
+casey_survey_raw <- readr::read_csv(file = "./data/casey-next-data-short-survey.csv",
+                                    col_names = TRUE) %>% 
+  `colnames<-`(make.names(names(.))) %>% 
+  rename("Age.Group" = "What.is.your.age.",
+         "Gender" = "What.is.your.Gender") %>% 
+  mutate(Age.Group = dplyr::recode(replace_na(tools::toTitleCase(tolower(Age.Group)), "Not Specified"),
+                                   "Unk" = "Unknown",
+                                   "49-68" = "Unknown", # one observation only
+                                   "Unkown" = "Unknown"),
+         Gender = dplyr::recode(replace_na(tools::toTitleCase(tolower(Gender)), "Not Specified"),
+                                "Unk" = "Unknown",
+                                "Unkown" = "Unknown",
+                                "m" = "Male",
+                                "Perfer not to Say" = "Prefer not to Say"))
+```
+
+###### Pagebreak
+
+# Executive Summary
+
+An executive summary.
+
+# Methodology
+
+## Data Sources
+
+Details about the data sources.
+
+## Analyses
+
+Details about the analytical techniques used.
+
+## Limitations
+
+Any limitations.
+
+###### Pagebreak
+
+# Key Findings
+
+## Respondent demographic characteristics
+
+Over half of the respondents were female. Almost a quarter of the survey respondents were aged between 29 and 38 years of age.
+
+```{r deomgraphics_tbl, echo=FALSE, warning=FALSE}
+
+# page width of the word document
+body_p_w <- 6.69291 # 17 cm into inches to fit the table
+
+# summarise by characteristic
+demographics_df <- c("Age.Group", 
+                     "Gender") %>% 
+  purrr::map( ~ casey_survey_raw %>% 
+                select(.x) %>% 
+                rename("Group" = !!sym(.x)) %>% 
+                group_by(Group) %>% 
+                count(.) %>% 
+                mutate(Characteristic = .x) %>% 
+                dplyr::select(Characteristic, everything())) %>% 
+  reduce(rbind) %>% 
+  group_by(Characteristic) %>% 
+  mutate(n.perc = scales::percent(n / sum(n)))
+
+# render a table 
+ft_demographics <- flextable(demographics_df)
+ft_demographics <- width(ft_demographics, j = ~ Characteristic, width = 0.4 * body_p_w)
+ft_demographics <- width(ft_demographics, j = ~ Group, width = 0.4 * body_p_w)
+ft_demographics <- width(ft_demographics, j = ~ n, width = 0.1 * body_p_w)
+ft_demographics <- width(ft_demographics, j = ~ n.perc, width = 0.1 * body_p_w)
+ft_demographics <- merge_v(ft_demographics, j = ~ Characteristic)
+ft_demographics <- theme_vanilla(ft_demographics)
+ft_demographics <- set_header_labels(ft_demographics,
+                                     n.perc = "% of Total")
+ft_demographics <- align(ft_demographics, align = "left")
+ft_demographics <- align(ft_demographics, align = "left", part = "header")
+ft_demographics
+
+```
+
+###### Pagebreak
+
+## Term frequencies for City of Casey Vision
+
+"safe" was the highest recorded word by survey respondents regarding the item - "*What three words would you use to describe your Vision for the City of Casey?*".
+
+```{r term_freq, echo=FALSE, warning=FALSE, fig.width=6.69291, fig.height=7, dpi=300}
+
+# summarise term frequencies
+term_freq_df <- casey_survey_raw %>% 
+  dplyr::select(3:5) %>%
+  `colnames<-`(make.names(as.character(unlist(.[1,])))) %>% 
+  filter(row_number() != 1) %>% 
+  tidyr::gather() %>% 
+  filter(!is.na(value)) %>% 
+  mutate(value = tolower(stringi::stri_trans_general(value, "latin-ascii"))) %>% 
+  group_by(value) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  dplyr::rename("Term" = "value",
+                "Frequency" = "n") 
+
+# plot the frequencies
+ggplot(data = head(term_freq_df, 20),
+       aes(x = reorder(Term, Frequency),
+           y = Frequency)) +
+  geom_bar(stat = "identity",
+           fill = "lightblue",
+           width = 0.5) +
+  theme_classic() +
+  coord_flip() +
+  geom_text(aes(x = Term, y = Frequency, label = Frequency), size = 3, vjust = 0.5, hjust = -0.25) +
+  ylab("Frequency") +
+  xlab("Term") +
+  labs(title = "Top 20 commonly used words for describing the\nVision for the City of Casey",
+       caption = paste0("n=", scales::comma(nrow(term_freq_df)), " words recorded by survey respondents"))
+
+```
+
